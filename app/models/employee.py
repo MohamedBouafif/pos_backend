@@ -27,4 +27,4 @@ class Employee(Base):
             "(contract_type IN ('Cdi', 'Cdd') AND cnss_number IS NOT NULL AND cnss_number ~ '^\d{8}-\d{2}$') OR (contract_type IN ('Apprenti', 'Sivp') AND (cnss_number IS NULL OR cnss_number ~ '^\d{8}-\d{2}$'))",
             name="ck_employees_cnss_number"
         ),
-    )
+    )  

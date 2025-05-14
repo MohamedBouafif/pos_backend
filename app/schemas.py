@@ -1,8 +1,12 @@
 from datetime import datetime, date
 from pydantic import BaseModel
-from app.enums import ContractType, Gender, AccountStatus
+from app.enums import ContractType, Gender
 from typing import List
 from app.enums import RoleType
+
+
+
+
 class OurBaseModel(BaseModel):
     class Config:
         orm_mode = True
@@ -28,3 +32,10 @@ class EmployeeCreate(EmployeeBase):
 class EmployeeResponse(EmployeeBase):
     id : int
     created_on : datetime
+
+class ConfirmAccount(OurBaseModel):
+    confirm_code: str
+
+class BaseOut(OurBaseModel):
+    detail : str
+    status_code: int

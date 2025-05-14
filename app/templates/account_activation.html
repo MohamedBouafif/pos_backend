@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Activation de compte</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f6f8;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            background-color: #ffffff;
+            max-width: 600px;
+            margin: 40px auto;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .button {
+            background-color: #28a745;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 16px;
+            margin-top: 20px;
+            display: inline-block;
+        }
+        .footer {
+            margin-top: 30px;
+            font-size: 13px;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Bienvenue sur notre application POS !{{name}}</h2>
+        <p>Merci pour votre inscription.</p>
+        <p>Cliquez sur le bouton ci-dessous pour activer votre compte :</p>
+
+        <a href="http://localhost:8000/confirmationAccount?confirmation_code={{code}}" class="button">Activer mon compte</a>
+        <br/>
+        <p>hedha password wa9ti {{psw}} tensech bch tbadlou ba3d</p>
+        <p class="footer">Si vous n'avez pas demandé cette inscription, ignorez simplement cet e-mail.</p>
+    </div>
+</body>
+</html>
