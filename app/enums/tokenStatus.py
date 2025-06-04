@@ -1,5 +1,5 @@
-from enum import Enum
+from .basicEnum import BasicEnum
 
-class TokenStatus(Enum):
+class TokenStatus(BasicEnum):
     Used = "Used"
     Pending = "Pending"

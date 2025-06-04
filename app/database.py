@@ -8,6 +8,6 @@ engine = create_engine(
     SQLALCHEMY_DATABASE_URL
     
 )
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine) # chnya il autocommit wil autoflash? 
 
 Base = declarative_base()

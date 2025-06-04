@@ -1,6 +1,6 @@
-from enum import Enum
+from .basicEnum import BasicEnum
 
-class ContractType(Enum):
+class ContractType(BasicEnum):
     Cdi = "Cdi"
     Cdd = "Cdd"
     Sivp = "Sivp"

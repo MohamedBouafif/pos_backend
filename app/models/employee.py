@@ -11,7 +11,7 @@ class Employee(Base):
     last_name = Column(String, nullable=False)
     email = Column(String, nullable=False, unique=True)
     password = Column(String, nullable=True)
-    number = Column(Integer, nullable=False)
+    number = Column(Integer, nullable=False, unique=True)
     birth_date = Column(Date, nullable=True)
     address = Column(String, nullable=True)
     cnss_number = Column(String, nullable=True)

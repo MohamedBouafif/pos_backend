@@ -1,6 +1,6 @@
-from enum import Enum
+from .basicEnum import BasicEnum
 
-class RoleType(Enum):
+class RoleType(BasicEnum):
     ADMIN = "ADMIN"
     InventoryManager = "InventoryManager"
     Superuser = "Superuser"
