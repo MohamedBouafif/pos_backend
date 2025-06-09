@@ -11,6 +11,10 @@ class OurBaseModel(BaseModel):
     class Config:
         orm_mode = True
 
+class BaseOut(OurBaseModel):
+    detail : str
+    status_code: int
+ 
 class EmployeeBase(OurBaseModel):
     first_name :str
     last_name :str
@@ -34,10 +38,7 @@ class EmployeeResponse(EmployeeBase):
 class ConfirmAccount(OurBaseModel):
     confirm_code: str
 
-class BaseOut(OurBaseModel):
-    detail : str
-    status_code: int
- 
+
 class MatchyCondition(OurBaseModel):
     property : ConditionProperty
     comparer : Optional[Comparer] = None
@@ -50,6 +51,9 @@ class MatchyOption(OurBaseModel):
     mendatory : Optional[bool] = False #true if not nullable
     type : FieldType
     conditions: Optional[List[MatchyCondition]] = []
+    
+class ImportPossibleFields(OurBaseModel):
+    possible_fields: List[MatchyOption] = []
 
 class MatchyCell(OurBaseModel):
     value: str
@@ -58,12 +62,12 @@ class MatchyCell(OurBaseModel):
 
 class MatchyUploadEntry(OurBaseModel):
     lines: List[Dict[str, MatchyCell]] # [ {cnss_number: {40, 1, 1}, {roles: {Admin, vendor, 1, 2}}, {emp 2}, {emp 3}] # enou emp lkol en tant que dict 3andhom nafs l keys
-
+    forceUpload: Optional[bool] = False
 class MatchyWrongCell(OurBaseModel):
     message: str
     rowIndex: int
     colIndex: int
-class ImportResponse(OurBaseModel):
-    errors:str 
-    warnings: str
-    wrongCells:list[MatchyWrongCell]
+class ImportResponse(BaseOut):
+    errors:Optional[str] = None
+    warnings: Optional[str] = None
+    wrongCells:Optional[list[MatchyWrongCell]] = []

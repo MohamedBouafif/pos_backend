@@ -1,15 +1,48 @@
+from typing import Annotated
+import uuid
 from fastapi import FastAPI, Depends , HTTPException, status
-from app import crud, schemas
+from app import crud, emailUtil, schemas
 from app import models, enums
 from .database import SessionLocal, engine
 from sqlalchemy.orm import Session
 from datetime import datetime
 from sqlalchemy import update
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer,OAuth2PasswordRequestForm
+from pydantic import BaseModel
 import re
 
 
 
 app = FastAPI()
+#fix me please : use specefic origins
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+class User(BaseModel):
+    username: str
+    email: str | None = None
+    full_name: str | None = None
+    disabled: bool | None = None
+def fake_decode_token(token):
+    return User(
+        username=token + "fakedecoded", email="john@example.com", full_name="John Doe"
+    )
+
+
+async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
+    user = fake_decode_token(token)
+    return user
+
+
+@app.get("/users/me")
+async def read_users_me(current_user: Annotated[User, Depends(get_current_user)]):
+    return current_user
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def get_db():
     db = SessionLocal()
@@ -17,6 +50,7 @@ def get_db():
         yield db
     finally:
         db.close()
+
 
 @app.get("/change_password")
 async def reset_password(email : str,db : Session = Depends(get_db)):
@@ -202,65 +236,115 @@ def validate_employee_data(employee):
             if converted_val is None: #if not convered_val khater ken je 3ana type bool => False valid value, int >= 0 converted_val = 0
                 msg = fields_check[field][1]
                 (errors if is_field_mandatory(employee, field) else warnings).append(msg)
-                wrong_cells.append(schemas.MatchyWrongCell(message=msg, rowIndex=cell.rowIndex, colIndex=cell.colIndex))
+                wrong_cells.append( )
             else:
                 employee_to_add[field] = converted_val
 
     return (errors, warnings, wrong_cells, employee_to_add)
 
 #many employees: batch add to reduce time consumption
-def validate_employees_data_and_upload(employees:list , force_upload: bool , db : Session = Depends(get_db)):
-    errors = []
-    warnings =[]
-    wrong_cells = []
-    employees_to_add = [] #bch nistaamlou fil batch add  bch nsob kol chy fard mara fil db
+#zid background task w handle errors (videos : background tasks debugging 2)
+async def validate_employees_data_and_upload(employees:list , force_upload: bool , db : Session = Depends(get_db)):
+    try:
+        errors = []
+        warnings =[]
+        wrong_cells = []
+        employees_to_add = [] #bch nistaamlou fil batch add  bch nsob kol chy fard mara fil db
+        roles_per_email = {}
+        roles = [] #ken il order maytbdlch
 
-    #adding errors, warnings , wrong_cells and the employee that we are going to add
-    for line, employee in enumerate(employees):
-        emp_errors, emp_warnings , emp_wrong_cells, emp = validate_employee_data(employee)
-        if emp_errors:
-            msg = ('\n').join(emp_errors) #returns a single string binet kol element mil list fama il joinig character 
-            errors.append(f"\nLine {line + 1}: \n {msg}")
-        if emp_warnings:
-            msg = ('\n').join(emp_warnings)
-            warnings.append(f"\nLine {line + 1}: \n {msg}")
-            # tajouti fil le5er ta3 il liste il value puisque il msg wala string ma3adch lista (sinon nnista3mlou extend) : 
-            # numero ligne : 
-            # msg 
-        if emp_wrong_cells:
-            wrong_cells.extend(emp_wrong_cells)
-            #bch najoutiw fil filsta ta3 il wrong cells lista ta3 cells puisque emp_wrong_cells is a list
-        employees_to_add.append(emp)
-    
-    
-    for field in unique_fields:
-        values = set()
-        for line ,employee in enumerate(employees): #employee = [{fields: value, rowIndex,colIndex}]
-                                                    #                       hedha kolou objet ena nekteb fih haka: MatchyCell
-            cell = employee.get(field)
-            val = cell.value.strip()
-            if val == '':#if it is mandatory , email and number where already checked in the fields check
-                continue
+        #adding errors, warnings , wrong_cells and the employee that we are going to add
+        for line, employee in enumerate(employees):
+            emp_errors, emp_warnings , emp_wrong_cells, emp = validate_employee_data(employee)
+            if emp_errors:
+                msg = ('\n').join(emp_errors) #returns a single string binet kol element mil list fama il joinig character 
+                errors.append(f"\nLine {line + 1}: \n {msg}")
+            if emp_warnings:
+                msg = ('\n').join(emp_warnings)
+                warnings.append(f"\nLine {line + 1}: \n {msg}")
+                # tajouti fil le5er ta3 il liste il value puisque il msg wala string ma3adch lista (sinon nnista3mlou extend) : 
+                # numero ligne : 
+                # msg 
+            if emp_wrong_cells:
+                wrong_cells.extend(emp_wrong_cells)
+                #bch najoutiw fil filsta ta3 il wrong cells lista ta3 cells puisque emp_wrong_cells is a list
+            
+            roles_per_email[emp.get("email")] = emp.pop('employee_roles') #email unique
+            emp["password"] =  uuid.uuid1()
+            employees_to_add.append(models.Employee(**emp))
+            roles.append(emp.get('roles'), [])
+        for field in unique_fields:
+            values = set()
+            for line ,employee in enumerate(employees): #employee = [{fields: value, rowIndex,colIndex}]
+                                                        #                       hedha kolou objet ena nekteb fih haka: MatchyCell
+                cell = employee.get(field)
+                val = cell.value.strip()
+                if val == '':#if it is mandatory , email and number where already checked in the fields check
+                    continue
 
-            if val in values:#mahomch unique f b3adhhom
-                    msg = f"{possible_fields[field]} should be unique. but this value exists more than one time in the file"
-                    (errors if is_field_mandatory(employee, field) else warnings).append(msg)
-                    wrong_cells.append(schemas.MatchyWrongCell(message=msg, rowIndex=cell.rowIndex, colIndex=cell.colIndex))
-            else:
-                values.add(val)
+                if val in values:#mahomch unique f b3adhhom
+                        msg = f"{possible_fields[field]} should be unique. but this value exists more than one time in the file"
+                        (errors if is_field_mandatory(employee, field) else warnings).append(msg)
+                        wrong_cells.append(schemas.MatchyWrongCell(message=msg, rowIndex=cell.rowIndex, colIndex=cell.colIndex))
+                else:
+                    values.add(val)
+
             duplicated_vals = db.query(models.Employee).filter(unique_fields[field].in_(values)).all()#nchouf famechi emails fil db ymatchiw il emails ili fil csv
+            duplicated_vals = {str(val[0]) for val in duplicated_vals} #set mara bch tit3aba bil mails w mara tenya bil numbers 
             if duplicated_vals :
-                msg  = f"{possible_fields[field]} should be unique . {(', ').join(duplicated_vals)} already exist  in database"
+                msg  = f"{possible_fields[field]} should be unique . {(', ').join([str(val[0]) for val in duplicated_vals])} already exist  in database"
                 (errors if is_field_mandatory(employee, field) else warnings).append(msg)
                 wrong_cells.append(schemas.MatchyWrongCell(message=msg, rowIndex=cell.rowIndex, colIndex=cell.colIndex))
-    
-    #mouhema inik t7otha lehna : manraja3ch il errors partiellement
-    if errors or (warnings and not force_upload):
-        return schemas.ImportResponse(
-            errors = ('\n').join(errors),
-            warnings = ('\n').join(warnings),
-            wrongCells=wrong_cells
-        )
+        
+        #mouhema inik t7otha lehna : manraja3ch il errors partiellement
+        if errors or (warnings and not force_upload):
+            return schemas.ImportResponse(
+                errors = ('\n').join(errors),
+                warnings = ('\n').join(warnings),
+                wrongCells=wrong_cells,
+                detail= "something went wrong ",
+                status_code=400,
+            )
+        #n7ebou naarfou role kol user baerd maysirlou add  -> fil batch adding ynajm mayraja3likch il id bil tartib 
+        db.add_all(employees_to_add)
+        db.flush() #field id fih value , email mawjoud
+        
+
+        #case 1 : order lost
+        employees_roles_to_add = []
+        for emp in employees_to_add:
+            for role in roles_per_email[emp.email]:
+                employees_roles_to_add.append(models.EmployeeRole(employee_id = emp.id, role = role))
+        db.add_all(employees_roles_to_add)
+
+        activation_codes_to_add = []
+        email_data = []
+        for emp in employees_to_add:
+            token = uuid.uuid1()
+            activation_code = models.AccountActivation(employee_id = emp.id ,email = emp.email, status = enums.TokenStatus.Pending, token = token)
+            activation_codes_to_add.append(activation_code)
+            email_data.append(([emp.email], {
+                'name': emp.first_name,
+                'code': token,
+                'psw': emp.password,
+            }))
+        
+        db.add_all(activation_codes_to_add)
+        #choice 1 wait for the sending(takes time , in case of a problem , we rollnack all transaction)
+        for email_datum in email_data:
+            await emailUtil.simple_send_account_activation(emailUtil.EmailSchema(email=[email_datum[0]]),email_datum[1])
+        #choice 2 do it using background tasks, if failed , no problem add a btn 'you havent received an email ?' clicked send again
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        text = str(e)
+        add_error(text,db)
+        raise HTTPException(status_code = 500,detail =get_error_message(str(e)))
+    return schemas.ImportResponse(
+        detail = "file uploaded ",
+        status_code=201
+    )
+
 @app.post("/employees/import")
 def importEmployees():
     pass
@@ -268,11 +352,36 @@ def importEmployees():
 @app.get("/employees/possibleImportFields")
 def getPossibleFields(db : Session = Depends(get_db)):
     return schemas.ImportPossibleFields(
-        possible_fields=options,
+        possible_fields=options
     )
+def add_error(text, db: Session):
+    try:
+        db.add(models.Error(
+            text = text
+        ))
+        db.commit()
+    except Exception as  e :
+        #alternative solution bech ken db tahet najem nil9a l mochkla
+        raise HTTPException(status_code = 500,detail ="Something went wrong")
+error_keys = {
+    "employee_roles_employee_id_fkey": "No Employee with this id",
+    "employee_roles_pkey": "No Employee Role with this id",
+    "ck_employees_cnss_number": "It should be {8 digits}-{2 digits} and it's Mandatory for Cdi and Cdd",
+    "employees_email_key": "Email already used",
+    "employees_pkey": "No employee with this id",
+}
+def get_error_message(error_message):
+    for error_key in error_keys:
+        if error_key in error_message:
+            return error_keys[error_key] # ken yti7ou 7ajtin ya3tik 7aja kahaw (l7aja loula ili ta7et khw) 
+        
+        
+    return "Something went wrong" # eyh ken something went wrong w customer kalamni chnaaml ? kifeh naarf lmochkla ili saret  ? 
+                                  #-> tableau fil db fih el message ta3 el errors
+
 
 @app.post("employees/csv")
-def upload(entry:schemas.MatchyUploadEntry, db:Session = Depends(get_db)):
+async def upload(entry:schemas.MatchyUploadEntry, db:Session = Depends(get_db)):
     employees = entry.lines
     if not employees: #front lezmou yjeri ili fama au moins ligne
         raise HTTPException(status_code=400, detail = "Nothig to do , Empty file !")
@@ -281,5 +390,9 @@ def upload(entry:schemas.MatchyUploadEntry, db:Session = Depends(get_db)):
     if missing_mendatory_fields:
         raise HTTPException(
             status_code = 400, 
-            detail= f"missing mendatory fields: {(', ').join([display  for field,display in missing_mendatory_fields.items()])}"
+            detail= f"missing mendatory fields: {(', ').join([mandatory_fields[field] for field in missing_mendatory_fields])}"
         )
+   
+    return await validate_employees_data_and_upload(employees, entry.forceUpload, db)
+    
+     
