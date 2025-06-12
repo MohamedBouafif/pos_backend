@@ -216,6 +216,7 @@ def validate_employee_data(employee):
     employee_to_add = { field: cell.value for field, cell in employee.items() } #lezem na7i il x wil y wnrodou dict aady -> {{field:value}, {field:value},....}
 
     for field in possible_fields:
+        #ken employee maandouch il field heka
         if field not in employee:
             if is_field_mandatory(employee, field):
                 errors.append(f"{possible_fields[field]} is mandatory but missing")
@@ -224,6 +225,7 @@ def validate_employee_data(employee):
         cell = employee[field]
         employee_to_add[field] = employee_to_add[field].strip() #ynajem ymedlik "   vendor         " fii 3odh "vendor"-> {{field:value}, {field:value},....}
 
+        #ken il field il value te3ou empty 
         if employee_to_add[field] == '': #birth date optional = ""
             if is_field_mandatory(employee, field):
                 msg = f"{possible_fields[field][0]} is mandatory but missing"
@@ -231,21 +233,29 @@ def validate_employee_data(employee):
                 wrong_cells.append(schemas.MatchyWrongCell(message=msg, rowIndex=cell.rowIndex, colIndex=cell.colIndex))
             else:
                 employee_to_add[field] = None # f db tetsab null
+
+        #ken il field aandou value lezem i check if he respects the constraints ili 3ithomlou 
         elif field in fields_check:
             converted_val = fields_check[field][0](employee_to_add[field])
             if converted_val is None: #if not convered_val khater ken je 3ana type bool => False valid value, int >= 0 converted_val = 0
                 msg = fields_check[field][1]
                 (errors if is_field_mandatory(employee, field) else warnings).append(msg)
-                wrong_cells.append( )
+                wrong_cells.append(schemas.MatchyWrongCell(message=msg, rowIndex=cell.rowIndex, colIndex=cell.colIndex))
             else:
                 employee_to_add[field] = converted_val
 
-    return (errors, warnings, wrong_cells, employee_to_add)
+    return (errors, warnings, wrong_cells, employee_to_add)# yraja3 7ata il employees ili fihom mochkla 
+
 
 #many employees: batch add to reduce time consumption
 #zid background task w handle errors (videos : background tasks debugging 2)
 async def validate_employees_data_and_upload(employees:list , force_upload: bool , db : Session = Depends(get_db)):
     try:
+
+        #######################################   VALIDATION   ##########################################
+                #validation in two steps : valdation of each employee data & validation of employees data between each other(unique fields)
+
+
         errors = []
         warnings =[]
         wrong_cells = []
@@ -273,8 +283,11 @@ async def validate_employees_data_and_upload(employees:list , force_upload: bool
             emp["password"] =  uuid.uuid1()
             employees_to_add.append(models.Employee(**emp))
             roles.append(emp.get('roles'), [])
+
+       
         for field in unique_fields:
             values = set()
+            #check if the uploaded file violates unique fileds'  constraints -> kol unique field nchofou m3a il employees lkol famechi chkoun aandhom same value
             for line ,employee in enumerate(employees): #employee = [{fields: value, rowIndex,colIndex}]
                                                         #                       hedha kolou objet ena nekteb fih haka: MatchyCell
                 cell = employee.get(field)
@@ -289,8 +302,9 @@ async def validate_employees_data_and_upload(employees:list , force_upload: bool
                 else:
                     values.add(val)
 
-            duplicated_vals = db.query(models.Employee).filter(unique_fields[field].in_(values)).all()#nchouf famechi emails fil db ymatchiw il emails ili fil csv
-            duplicated_vals = {str(val[0]) for val in duplicated_vals} #set mara bch tit3aba bil mails w mara tenya bil numbers 
+            #check if the db containes values equals the ones uploaded from the file 
+            duplicated_vals = db.query(models.Employee).filter(unique_fields[field].in_(values)).all()
+            duplicated_vals = {str(val[0]) for val in duplicated_vals}
             if duplicated_vals :
                 msg  = f"{possible_fields[field]} should be unique . {(', ').join([str(val[0]) for val in duplicated_vals])} already exist  in database"
                 (errors if is_field_mandatory(employee, field) else warnings).append(msg)
@@ -305,6 +319,9 @@ async def validate_employees_data_and_upload(employees:list , force_upload: bool
                 detail= "something went wrong ",
                 status_code=400,
             )
+        
+
+        #######################################   UPLOAD DATA TO DB   ##########################################
         #n7ebou naarfou role kol user baerd maysirlou add  -> fil batch adding ynajm mayraja3likch il id bil tartib 
         db.add_all(employees_to_add)
         db.flush() #field id fih value , email mawjoud
@@ -316,23 +333,24 @@ async def validate_employees_data_and_upload(employees:list , force_upload: bool
             for role in roles_per_email[emp.email]:
                 employees_roles_to_add.append(models.EmployeeRole(employee_id = emp.id, role = role))
         db.add_all(employees_roles_to_add)
-
-        activation_codes_to_add = []
-        email_data = []
-        for emp in employees_to_add:
-            token = uuid.uuid1()
-            activation_code = models.AccountActivation(employee_id = emp.id ,email = emp.email, status = enums.TokenStatus.Pending, token = token)
-            activation_codes_to_add.append(activation_code)
-            email_data.append(([emp.email], {
-                'name': emp.first_name,
-                'code': token,
-                'psw': emp.password,
-            }))
+        #ma7achtich bil ids ta3 il roles  -> no need to flush
         
-        db.add_all(activation_codes_to_add)
-        #choice 1 wait for the sending(takes time , in case of a problem , we rollnack all transaction)
-        for email_datum in email_data:
-            await emailUtil.simple_send_account_activation(emailUtil.EmailSchema(email=[email_datum[0]]),email_datum[1])
+        # activation_codes_to_add = []
+        # email_data = []
+        # for emp in employees_to_add:
+        #     token = uuid.uuid1()
+        #     activation_code = models.AccountActivation(employee_id = emp.id ,email = emp.email, status = enums.TokenStatus.Pending, token = token)
+        #     activation_codes_to_add.append(activation_code)
+        #     email_data.append(([emp.email], {
+        #         'name': emp.first_name,
+        #         'code': token,
+        #         'psw': emp.password,
+        #     }))
+        
+        # db.add_all(activation_codes_to_add)
+        # #choice 1 wait for the sending(takes time , in case of a problem , we rollnack all transaction)
+        # for email_datum in email_data:
+        #     await emailUtil.simple_send_account_activation(emailUtil.EmailSchema(email=[email_datum[0]]),email_datum[1])
         #choice 2 do it using background tasks, if failed , no problem add a btn 'you havent received an email ?' clicked send again
         db.commit()
     except Exception as e:
@@ -341,8 +359,8 @@ async def validate_employees_data_and_upload(employees:list , force_upload: bool
         add_error(text,db)
         raise HTTPException(status_code = 500,detail =get_error_message(str(e)))
     return schemas.ImportResponse(
-        detail = "file uploaded ",
-        status_code=201
+        detail = "file uploaded successfully",
+        status_code=201,
     )
 
 @app.post("/employees/import")
@@ -380,13 +398,15 @@ def get_error_message(error_message):
                                   #-> tableau fil db fih el message ta3 el errors
 
 
+
+#il entry feha ligne milfou9 belkol fih esemi les champs ili bch ysirilhom upload
 @app.post("employees/csv")
 async def upload(entry:schemas.MatchyUploadEntry, db:Session = Depends(get_db)):
     employees = entry.lines
     if not employees: #front lezmou yjeri ili fama au moins ligne
         raise HTTPException(status_code=400, detail = "Nothig to do , Empty file !")
-    header_fields = employees[0].keys()
-    missing_mendatory_fields = set(mandatory_fields.keys()) - employees[0].keys()
+    header_fields = employees[0].keys()#esemi il champs ili bch naamlilhom upload
+    missing_mendatory_fields = set(mandatory_fields.keys()) - header_fields
     if missing_mendatory_fields:
         raise HTTPException(
             status_code = 400, 
