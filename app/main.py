@@ -1,6 +1,6 @@
 from typing import Annotated
 import uuid
-from fastapi import FastAPI, Depends , HTTPException, status
+from fastapi import FastAPI, Depends , HTTPException, status,BackgroundTasks
 from app import crud, emailUtil, schemas
 from app import models, enums
 from .database import SessionLocal, engine
@@ -250,7 +250,7 @@ def validate_employee_data(employee):
 
 #many employees: batch add to reduce time consumption
 #zid background task w handle errors (videos : background tasks debugging 2)
-async def validate_employees_data_and_upload(employees:list , force_upload: bool , db : Session = Depends(get_db)):
+def validate_employees_data_and_upload(employees:list , backgroundTasks : BackgroundTasks,force_upload: bool , db : Session = Depends(get_db)):
     try:
 
         #######################################   VALIDATION   ##########################################
@@ -357,9 +357,11 @@ async def validate_employees_data_and_upload(employees:list , force_upload: bool
         
         db.add_all(activation_codes_to_add)
         #choice 1 wait for the sending(takes time , in case of a problem , we rollnack all transaction)
+
+        #lehne ynajm ysir exception fil sending emails ykhalik troll back kol chay fil db donc its better to send the emails in background task
         for email_datum in email_data:
-            await emailUtil.simple_send_account_activation(emailUtil.EmailSchema(email=[email_datum[0]]),email_datum[1])
-        #choice 2 do it using background tasks, if failed , no problem add a btn 'you havent received an email ?' clicked send again
+            backgroundTasks.add_task(emailUtil.simple_send_account_activation,emailUtil.EmailSchema(email=[email_datum[0]]),email_datum[1])
+        
         db.commit()
     except Exception as e:
         db.rollback()
@@ -370,6 +372,9 @@ async def validate_employees_data_and_upload(employees:list , force_upload: bool
         detail = "file uploaded successfully",
         status_code=201,
     )
+
+
+
 
 @app.post("/employees/import")
 def importEmployees():
@@ -409,7 +414,7 @@ def get_error_message(error_message):
 
 #il entry feha ligne milfou9 belkol fih esemi les champs ili bch ysirilhom upload
 @app.post("employees/csv")
-async def upload(entry:schemas.MatchyUploadEntry, db:Session = Depends(get_db)):
+async def upload(entry:schemas.MatchyUploadEntry, backgroundTasks : BackgroundTasks,db:Session = Depends(get_db)):
     employees = entry.lines
     if not employees: #front lezmou yjeri ili fama au moins ligne
         raise HTTPException(status_code=400, detail = "Nothig to do , Empty file !")
@@ -421,6 +426,6 @@ async def upload(entry:schemas.MatchyUploadEntry, db:Session = Depends(get_db)):
             detail= f"missing mendatory fields: {(', ').join([mandatory_fields[field] for field in missing_mendatory_fields])}"
         )
    
-    return await validate_employees_data_and_upload(employees, entry.forceUpload, db)
+    return  validate_employees_data_and_upload(employees, backgroundTasks ,entry.forceUpload, db)
     
      
