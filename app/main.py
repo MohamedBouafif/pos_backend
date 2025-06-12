@@ -16,6 +16,13 @@ import re
 
 app = FastAPI()
 #fix me please : use specefic origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 class User(BaseModel):
     username: str
@@ -36,13 +43,7 @@ async def get_current_user(token: Annotated[str, Depends(oauth2_scheme)]):
 @app.get("/users/me")
 async def read_users_me(current_user: Annotated[User, Depends(get_current_user)]):
     return current_user
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+
 
 def get_db():
     db = SessionLocal()
@@ -304,11 +305,18 @@ async def validate_employees_data_and_upload(employees:list , force_upload: bool
 
             #check if the db containes values equals the ones uploaded from the file 
             duplicated_vals = db.query(models.Employee).filter(unique_fields[field].in_(values)).all()
-            duplicated_vals = {str(val[0]) for val in duplicated_vals}
+            duplicated_vals = {str(val[0]) for val in duplicated_vals} # transform it to set to make search in o(log(n))
             if duplicated_vals :
                 msg  = f"{possible_fields[field]} should be unique . {(', ').join([str(val[0]) for val in duplicated_vals])} already exist  in database"
                 (errors if is_field_mandatory(employee, field) else warnings).append(msg)
-                wrong_cells.append(schemas.MatchyWrongCell(message=msg, rowIndex=cell.rowIndex, colIndex=cell.colIndex))
+                # wrong_cells.append(schemas.MatchyWrongCell(message=msg, rowIndex=cell.rowIndex, colIndex=cell.colIndex)) ken nkhaleha haka y7amarli ken cell khw
+                for employee in employees:
+                    cell = employee.get(field)
+                    val = cell.value.strip()
+                    if val == '':
+                        continue
+                    if val in duplicated_vals : 
+                        wrong_cells.append(schemas.MatchyWrongCell(message=msg, rowIndex=cell.rowIndex, colIndex=cell.colIndex))
         
         #mouhema inik t7otha lehna : manraja3ch il errors partiellement
         if errors or (warnings and not force_upload):
@@ -335,22 +343,22 @@ async def validate_employees_data_and_upload(employees:list , force_upload: bool
         db.add_all(employees_roles_to_add)
         #ma7achtich bil ids ta3 il roles  -> no need to flush
         
-        # activation_codes_to_add = []
-        # email_data = []
-        # for emp in employees_to_add:
-        #     token = uuid.uuid1()
-        #     activation_code = models.AccountActivation(employee_id = emp.id ,email = emp.email, status = enums.TokenStatus.Pending, token = token)
-        #     activation_codes_to_add.append(activation_code)
-        #     email_data.append(([emp.email], {
-        #         'name': emp.first_name,
-        #         'code': token,
-        #         'psw': emp.password,
-        #     }))
+        activation_codes_to_add = []
+        email_data = []
+        for emp in employees_to_add:
+            token = uuid.uuid1()
+            activation_code = models.AccountActivation(employee_id = emp.id ,email = emp.email, status = enums.TokenStatus.Pending, token = token)
+            activation_codes_to_add.append(activation_code)
+            email_data.append(([emp.email], {
+                'name': emp.first_name,
+                'code': token,
+                'psw': emp.password,
+            }))
         
-        # db.add_all(activation_codes_to_add)
-        # #choice 1 wait for the sending(takes time , in case of a problem , we rollnack all transaction)
-        # for email_datum in email_data:
-        #     await emailUtil.simple_send_account_activation(emailUtil.EmailSchema(email=[email_datum[0]]),email_datum[1])
+        db.add_all(activation_codes_to_add)
+        #choice 1 wait for the sending(takes time , in case of a problem , we rollnack all transaction)
+        for email_datum in email_data:
+            await emailUtil.simple_send_account_activation(emailUtil.EmailSchema(email=[email_datum[0]]),email_datum[1])
         #choice 2 do it using background tasks, if failed , no problem add a btn 'you havent received an email ?' clicked send again
         db.commit()
     except Exception as e:
