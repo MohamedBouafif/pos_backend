@@ -71,3 +71,12 @@ class ImportResponse(BaseOut):
     errors:Optional[str] = None
     warnings: Optional[str] = None
     wrongCells:Optional[list[MatchyWrongCell]] = []
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
+
+
+class TokenData(BaseModel):
+    username: str | None = None
