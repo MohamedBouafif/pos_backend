@@ -45,7 +45,9 @@
 
         <a href="http://localhost:8000/confirmationAccount?confirmation_code={{code}}" class="button">Activer mon compte</a>
         <br/>
-        <p>hedha password wa9ti {{psw}} tensech bch tbadlou ba3d</p>
+        {% if psw %}
+            <p>hedha password wa9ti {{psw}} tensech bch tbadlou ba3d</p>
+        {% endif %}
         <p class="footer">Si vous n'avez pas demandé cette inscription, ignorez simplement cet e-mail.</p>
     </div>
 </body>

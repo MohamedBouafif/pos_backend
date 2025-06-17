@@ -14,7 +14,11 @@ class OurBaseModel(BaseModel):
 class BaseOut(OurBaseModel):
     detail : str
     status_code: int
- 
+class PagedResponse(BaseOut):
+    page_number: int
+    page_size: int
+    total_pages:int
+    total_records: int
 class EmployeeBase(OurBaseModel):
     first_name :str
     last_name :str
@@ -34,10 +38,20 @@ class EmployeeCreate(EmployeeBase):
 class EmployeeResponse(EmployeeBase):
     id : int
     created_on : datetime
-
+class EmployeesResponse(PagedResponse):
+    list : List[EmployeeResponse]
+class EmployeeEdit(EmployeeCreate):
+    actual_password : str | None = None
 class ConfirmAccount(OurBaseModel):
     confirm_code: str
 
+class ForgetPassword(OurBaseModel):
+    email:str
+
+class ResetPassword(OurBaseModel):
+    reset_code: str
+    password : str
+    confirm_password:str
 
 class MatchyCondition(OurBaseModel):
     property : ConditionProperty

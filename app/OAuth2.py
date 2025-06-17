@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException,status
 import jwt
 from app import models
+from app.crud.employee import get_employee_by_email
 from app.schemas import TokenData
 from .config import settings
 from passlib.context import CryptContext
@@ -30,8 +31,6 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def get_employee(db,email):
-    return db.query(models.Employee).filter(models.Employee.email == email).first()
 
 
 def get_curr_employee(db  ,token):
@@ -48,13 +47,13 @@ def get_curr_employee(db  ,token):
         token_data = TokenData(email=email)
     except jwt.InvalidTokenError:
         raise credentials_exception
-    employee = get_employee(db, username=token_data.email)
+    employee = get_employee_by_email(db, username=token_data.email)
     if employee is None:
         raise credentials_exception
     return employee
 
 def authenticate_employee(db, email: str, password: str):
-    employee = get_employee(db, email)
+    employee = get_employee_by_email(db, email)
     if not employee:
         return False
     if not verify_password(password, employee.hashed_password):

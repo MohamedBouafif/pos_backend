@@ -1,12 +1,12 @@
 from typing import List
 
-from fastapi import BackgroundTasks, FastAPI
 from fastapi_mail import ConnectionConfig, FastMail, MessageSchema, MessageType
 from pydantic import BaseModel, EmailStr
 from starlette.responses import JSONResponse
 from pathlib import Path
+from app.enums.emailTemplate import EmailTemplate
 
-from .config import settings
+from ..config import settings
 
 class EmailSchema(BaseModel):
     email: List[EmailStr]
@@ -28,29 +28,25 @@ conf = ConnectionConfig(
 
 
 
+template_per_email = {
+    EmailTemplate.ConfirmAccount : "account_activation.html",
+    EmailTemplate.ResetPassword : "reset_password.html",
+}
+subject_per_mail = {
+    EmailTemplate.ConfirmAccount: "Création de compte - POS",
+    EmailTemplate.ResetPassword: "Réinitialiser le mot de passe - POS"
+}
 
 
-
-async def simple_send_account_activation(email: EmailSchema, body: dict ) -> JSONResponse:
+async def simple_send(email: EmailSchema, body: dict , type : EmailTemplate) -> JSONResponse:
 
     message = MessageSchema(
-        subject="Création de compte - POS",
+        subject=subject_per_mail[type],
         recipients=email.email,
         template_body=body,
         subtype=MessageType.html)
 
     fm = FastMail(conf)
-    await fm.send_message(message, template_name = "account_activation.html")
+    await fm.send_message(message, template_name = template_per_email[type])
     return JSONResponse(status_code=200, content={"message": "email has been sent"})    
 
-async def simple_send_reset_password(email: EmailSchema, body: dict ) -> JSONResponse:
-
-    message = MessageSchema(
-        subject="Création de compte - POS",
-        recipients=email.email,
-        template_body=body,
-        subtype=MessageType.html)
-
-    fm = FastMail(conf)
-    await fm.send_message(message, template_name = "reset_password.html")
-    return JSONResponse(status_code=200, content={"message": "email has been sent"})    

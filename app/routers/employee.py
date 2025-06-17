@@ -1,66 +1,76 @@
 from fastapi import APIRouter
 
 import uuid
-from fastapi import   HTTPException,  status,BackgroundTasks
-from app import crud, emailUtil, schemas
+from fastapi import   HTTPException,BackgroundTasks
+from app import  schemas
 from app import models, enums
-from app.dependencies import DbDep
+from app.crud import employee
+from app.dependencies import DbDep, PaginationDep
 
 from sqlalchemy.orm import Session
 from datetime import datetime
-from sqlalchemy import update
 
 import re
+
+from app.enums.emailTemplate import EmailTemplate
+from app.external_services import emailService
 
 app = APIRouter(
     prefix = "/employee",
     tags=["Employee"],
 )
 
-@app.get("/change_password")
-async def reset_password(email : str,db : DbDep):
-    if crud.get_by_email(db= db, email = email) == None:
-        raise HTTPException(status_code = 400 , detail = "Email is not registered")
-    return await crud.resetpassword(db = db,email=email)
-        
 
 
-
-@app.post("/", response_model=schemas.EmployeeResponse)
-async def create_user(employee_create: schemas.EmployeeCreate, db : DbDep):
+@app.post("/",  response_model=schemas.EmployeeResponse)
+async def add(employee_create: schemas.EmployeeCreate, db : DbDep):
     if employee_create.password != employee_create.confirm_password:
-        raise HTTPException(status_code=400, detail="Password must match!")
-    # db_employee  = crud.get_by_email(db,email = employee_create.email)
-    # if db_employee:
-    #     raise HTTPException(status_code = 400 , detail = "Email already registered") 
-    # HEDHY NA7EHA khater 3maltlha try catch  fil add function 
-    return await crud.add(db, employee_create)
-
-
-@app.patch("/",response_model = schemas.BaseOut)
-def confirm_account(confirmAccountInput :schemas.ConfirmAccount, db : DbDep):
-    confirmation_code = crud.get_confirmation_code(db,confirmAccountInput.confirm_code)
-    if not confirmation_code:
-        raise HTTPException(status_code=400, detail ="Token does not exists")
-    if confirmation_code.status == enums.TokenStatus.Used:
-        raise HTTPException(status_code= 400,  detail="Token already used")
-    diff = datetime.now() - confirmation_code.created_on 
-    if diff.total_seconds() > 60*60:
-        raise HTTPException(status_code=400 , detail="Token expired")
+            raise HTTPException(status_code=400, detail="Password must match!")
+    try:
+        db_employee = await employee.add_employee(db = db ,employee = employee_create)
+    except Exception as e:
+        db.rollback()
+        text = str(e)
+        add_error(text,db)
+        raise HTTPException(status_code = 500,detail =get_error_message(str(e)))
     
-    
-    stmt1 = update(models.Employee).where(models.Employee.id == confirmation_code.employee_id).values(account_status=enums.AccountStatus.Active)
-    db.execute(stmt1)
+    return schemas.EmployeeResponse(**db_employee.__dict__)
 
-    stmt2 = update(models.AccountActivation).where(models.AccountActivation.id == confirmation_code.id).values(status=enums.TokenStatus.Used)
-    db.execute(stmt2)
-    db.commit()
+@app.put("/{id}",response_model = schemas.EmployeeResponse)
+async def edit(db : Session , id : int, entry:schemas.EmployeeEdit):
+    try:
+        await employee.edit_employee(db , id, entry)
+    except Exception as e:
+        db.rollback()
+        text = str(e)
+        add_error(text,db)
+        raise HTTPException(status_code = 500,detail =get_error_message(str(e)))
 
     return schemas.BaseOut(
-        detail="Account activated !",
-        status_code= status.HTTP_200_OK
+        status_code = 201,
+        detail = "User updated seccussefully !"
     )
 
+@app.get("/all", response_model = schemas.EmployeesResponse)
+def get_all(db : Session , pagination_param : PaginationDep, name_substr  :str = None ):
+    try:
+        employees ,total_records, total_pages = employee.get_employees(db , pagination_param , name_substr)
+    except Exception as e:
+        db.rollback()
+        text = str(e)
+        add_error(text,db)
+        raise HTTPException(status_code = 500,detail =get_error_message(str(e))) 
+    return schemas.EmployeesResponse(
+        status_code=200,
+        detail = "All Employees",
+        list = [schemas.EmployeeResponse(**employee.__dict__) for employee in employees] ,#to update later because of the roles
+        page_number = pagination_param.page_number,
+        page_size = pagination_param.page_size,
+        total_pages = total_pages,
+        total_records = total_records
+    )
+
+    
 email_regex = r'^\S+@\S+\.\S+$'
 cnss_regex = r'^\d{8}-\d{2}$'
 phone_number_regex = r'^\d{8}$'
@@ -324,7 +334,7 @@ def validate_employees_data_and_upload(employees:list , backgroundTasks : Backgr
 
         #lehne ynajm ysir exception fil sending emails ykhalik troll back kol chay fil db donc its better to send the emails in background task
         for email_datum in email_data:
-            backgroundTasks.add_task(emailUtil.simple_send_account_activation,emailUtil.EmailSchema(email=[email_datum[0]]),email_datum[1])
+            backgroundTasks.add_task(emailService.simple_send,emailService.EmailSchema(email=[email_datum[0]]),email_datum[1],EmailTemplate.ConfirmAccount)
         
         db.commit()
     except Exception as e:
