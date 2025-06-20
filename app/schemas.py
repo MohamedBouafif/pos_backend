@@ -14,11 +14,13 @@ class OurBaseModel(BaseModel):
 class BaseOut(OurBaseModel):
     detail : str
     status_code: int
+    
 class PagedResponse(BaseOut):
     page_number: int
     page_size: int
     total_pages: int
     total_records: int
+
 class EmployeeBase(OurBaseModel):
     first_name :str
     last_name :str
@@ -35,13 +37,17 @@ class EmployeeBase(OurBaseModel):
 class EmployeeCreate(EmployeeBase):
     password :str | None = None
     confirm_password : str | None = None
+
 class EmployeeResponse(EmployeeBase):
     id : int
     created_on : datetime
+
 class EmployeesResponse(PagedResponse):
     list : List[EmployeeResponse]
+
 class EmployeeEdit(EmployeeCreate):
     actual_password : str | None = None
+
 class ConfirmAccount(OurBaseModel):
     confirm_code: str
 

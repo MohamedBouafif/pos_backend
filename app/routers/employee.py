@@ -59,11 +59,11 @@ async def edit(id: int, entry: schemas.EmployeeEdit, db: DbDep):
     )
 
 
+
 @app.get("/all", response_model=schemas.EmployeesResponse)
 def get(db: DbDep, pagination_param: PaginationDep, name_substr: str = None):
     try:
         employees, total_records, total_pages = employee.get_employees(db, pagination_param, name_substr)
-        
     except Exception as e:
         db.rollback()
         text = str(e)
@@ -73,12 +73,27 @@ def get(db: DbDep, pagination_param: PaginationDep, name_substr: str = None):
     return schemas.EmployeesResponse(
         status_code=200,
         detail="All employees",
-        list=[schemas.EmployeesResponse(**employee.__dict__, roles=[employee_role.role for employee_role in employee.roles]) for employee in employees], # to update later
+        list=[schemas.EmployeeResponse(
+            id=employee.id,
+            first_name=employee.first_name,  
+            last_name=employee.last_name,
+            email=employee.email,
+            roles=[employee_role.role for employee_role in employee.roles],
+            number=employee.number,
+            birth_date=employee.birth_date,
+            address=employee.address,
+            cnss_number=employee.cnss_number,
+            contract_type=employee.contract_type,
+            gender=employee.gender,
+            phone_number=employee.phone_number,
+            created_on=employee.created_on
+        ) for employee in employees],
         page_number=pagination_param.page_number, 
         page_size=pagination_param.page_size,
         total_pages=total_pages,
-        total_records = total_records,
+        total_records=total_records,
     )
+
 
     
 email_regex = r'^\S+@\S+\.\S+$'

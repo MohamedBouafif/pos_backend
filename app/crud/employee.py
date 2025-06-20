@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.OAuth2 import get_password_hash
 from app.crud.auth import add_confirmation_code
-from app.dependencies import  PaginationParams
+from app.dependencies import  PaginationDep
 from app.enums.emailTemplate import EmailTemplate
 from ..external_services import emailService
 from ..import models, schemas, enums
@@ -33,7 +33,7 @@ def div_ceil(nominator,denominator):
     additional_page = 1 if nominator % denominator > 0 else 0
     return full_pages + additional_page
 
-def get_employees(db: Session, pagination_param: PaginationParams, name_substr: str):
+def get_employees(db: Session, pagination_param: PaginationDep, name_substr: str):
     query = db.query(models.Employee)
 
     if name_substr:
@@ -42,7 +42,6 @@ def get_employees(db: Session, pagination_param: PaginationParams, name_substr: 
     total_records = query.count()
     total_pages = div_ceil(total_records, pagination_param.page_size)
     employees = query.limit(pagination_param.page_size).offset((pagination_param.page_number-1)*pagination_param.page_size).all()
-    
     return (employees, total_records, total_pages)
 
 
