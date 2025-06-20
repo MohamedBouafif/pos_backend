@@ -3,7 +3,8 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from fastapi import Depends
 
-from app.OAuth2 import get_curr_employee
+from app import models
+from app.OAuth2 import  get_curr_employee
 from app.database import SessionLocal
 
 def get_db():
@@ -27,5 +28,7 @@ class PaginationParams:
 
 PaginationDep = Annotated[PaginationParams, Depends()]
 
-def get_current_employee(db : DbDep, token : tokenDep):
+
+def get_current_employee(db : DbDep ,token : tokenDep ):
     return get_curr_employee(db , token)
+currentEmployee = Annotated[models.Employee, Depends(get_current_employee)]

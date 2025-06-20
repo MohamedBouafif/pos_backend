@@ -2,7 +2,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException,status
 import jwt
 from app import models
-from app.crud.employee import get_employee_by_email
+from sqlalchemy.orm import Session
+
 from app.schemas import TokenData
 from .config import settings
 from passlib.context import CryptContext
@@ -19,7 +20,8 @@ def verify_password(plain_password, hashed_password):
 def get_password_hash(password):
     return pwd_context.hash(password)
 
-
+def get_employee_by_email(db : Session , email : str):
+    return db.query(models.Employee).filter(models.Employee.email == email).first()
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()

@@ -17,7 +17,7 @@ class BaseOut(OurBaseModel):
 class PagedResponse(BaseOut):
     page_number: int
     page_size: int
-    total_pages:int
+    total_pages: int
     total_records: int
 class EmployeeBase(OurBaseModel):
     first_name :str

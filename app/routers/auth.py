@@ -5,8 +5,8 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 
 from app import enums, models, schemas
-from app.OAuth2 import ACCESS_TOKEN_EXPIRE_MINUTES,create_access_token,authenticate_employee, get_password_hash
-from app.crud.employee import edit_employee, edit_reset_code, get_confirmation_code, sudo_edit_employee,edit_confirmation_code,add_reset_code, get_employee_by_email, get_reset_code
+from app.OAuth2 import ACCESS_TOKEN_EXPIRE_MINUTES,create_access_token,authenticate_employee, get_employee_by_email, get_password_hash
+from app.crud.employee import edit_employee, sudo_edit_employee
 from app.crud.error import add_error, get_error_message
 from app.dependencies import DbDep, OAuthDep
 from app.enums.emailTemplate import EmailTemplate
@@ -44,7 +44,7 @@ async def login_for_access_token(db : DbDep,form_data: OAuthDep):
 @app.patch("/confirm_account",response_model = schemas.BaseOut)
 def confirm_account(confirmAccountInput :schemas.ConfirmAccount, db : DbDep):
     try:
-        confirmation_code = get_confirmation_code(db,confirmAccountInput.confirm_code)
+        confirmation_code = auth.get_confirmation_code(db,confirmAccountInput.confirm_code)
         if not confirmation_code:
             raise HTTPException(status_code=400, detail ="Token does not exists")
         if confirmation_code.status == enums.TokenStatus.Used:
@@ -81,7 +81,7 @@ async def forgot_password(entry : schemas.ForgetPassword, db :DbDep):
             status = status.HTTP_404_NOT_FOUND
         )
     try:
-        reset_code = add_reset_code(db , employee)
+        reset_code = auth.add_reset_code(db , employee)
         db.flush()
         await simple_send(EmailSchema(email=[employee.email]),{
             'code': reset_code.token,
@@ -103,7 +103,7 @@ async def forgot_password(entry : schemas.ForgetPassword, db :DbDep):
 @app.patch("/reset_password",response_model = schemas.BaseOut)
 def reset_password(resetPasswordInput : schemas.ResetPassword, db : DbDep):
     try:
-        reset_code = get_reset_code(db,resetPasswordInput.reset_code)
+        reset_code = auth.get_reset_code(db,resetPasswordInput.reset_code)
         if not reset_code:
             raise HTTPException(status_code=400, detail ="Token does not exists")
         if reset_code.status == enums.TokenStatus.Used:
@@ -118,7 +118,7 @@ def reset_password(resetPasswordInput : schemas.ResetPassword, db : DbDep):
 
         edit_employee(db,reset_code.employee_id, {models.Employee.password : get_password_hash(resetPasswordInput)})
         
-        edit_reset_code(db , reset_code.id, {models.AccountActivation.status : enums.TokenStatus.Used})
+        auth.edit_reset_code(db , reset_code.id, {models.AccountActivation.status : enums.TokenStatus.Used})
         
         db.commit()
     except Exception as e:

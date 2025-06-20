@@ -1,11 +1,11 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 import uuid
 from fastapi import   HTTPException,BackgroundTasks
 from app import  schemas
 from app import models, enums
 from app.crud import employee
-from app.dependencies import DbDep, PaginationDep
+from app.dependencies import DbDep, PaginationDep,currentEmployee, get_current_employee
 
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -21,9 +21,16 @@ app = APIRouter(
 )
 
 
+error_keys = {
+    "employee_roles_employee_id_fkey": "No Employee with this id",
+    "employee_roles_pkey": "No Employee Role with this id",
+    "ck_employees_cnss_number": "It should be {8 digits}-{2 digits} and it's Mandatory for Cdi and Cdd",
+    "employees_email_key": "Email already used",
+    "employees_pkey": "No employee with this id",
+}
 
 @app.post("/",  response_model=schemas.EmployeeResponse)
-async def add(employee_create: schemas.EmployeeCreate, db : DbDep):
+async def add(employee_create: schemas.EmployeeCreate, db : DbDep,current_user : currentEmployee):
     if employee_create.password != employee_create.confirm_password:
             raise HTTPException(status_code=400, detail="Password must match!")
     try:
@@ -36,38 +43,41 @@ async def add(employee_create: schemas.EmployeeCreate, db : DbDep):
     
     return schemas.EmployeeResponse(**db_employee.__dict__)
 
-@app.put("/{id}",response_model = schemas.EmployeeResponse)
-async def edit(db : Session , id : int, entry:schemas.EmployeeEdit):
+@app.put("/{id}", response_model=schemas.BaseOut)
+async def edit(id: int, entry: schemas.EmployeeEdit, db: DbDep):
     try:
-        await employee.edit_employee(db , id, entry)
+        await employee.edit_employee(db, id, entry)
     except Exception as e:
         db.rollback()
         text = str(e)
-        add_error(text,db)
-        raise HTTPException(status_code = 500,detail =get_error_message(str(e)))
-
+        add_error(text, db)
+        raise HTTPException(status_code=500, detail=get_error_message(text, error_keys))
+    
     return schemas.BaseOut(
-        status_code = 201,
-        detail = "User updated seccussefully !"
+        status_code=201,
+        detail="User updated",
     )
 
-@app.get("/all", response_model = schemas.EmployeesResponse)
-def get_all(db : Session , pagination_param : PaginationDep, name_substr  :str = None ):
+
+@app.get("/all", response_model=schemas.EmployeesResponse)
+def get(db: DbDep, pagination_param: PaginationDep, name_substr: str = None):
     try:
-        employees ,total_records, total_pages = employee.get_employees(db , pagination_param , name_substr)
+        employees, total_records, total_pages = employee.get_employees(db, pagination_param, name_substr)
+        
     except Exception as e:
         db.rollback()
         text = str(e)
-        add_error(text,db)
-        raise HTTPException(status_code = 500,detail =get_error_message(str(e))) 
+        add_error(text, db)
+        raise HTTPException(status_code=500, detail=get_error_message(text, error_keys))
+    
     return schemas.EmployeesResponse(
         status_code=200,
-        detail = "All Employees",
-        list = [schemas.EmployeeResponse(**employee.__dict__) for employee in employees] ,#to update later because of the roles
-        page_number = pagination_param.page_number,
-        page_size = pagination_param.page_size,
-        total_pages = total_pages,
-        total_records = total_records
+        detail="All employees",
+        list=[schemas.EmployeesResponse(**employee.__dict__, roles=[employee_role.role for employee_role in employee.roles]) for employee in employees], # to update later
+        page_number=pagination_param.page_number, 
+        page_size=pagination_param.page_size,
+        total_pages=total_pages,
+        total_records = total_records,
     )
 
     
@@ -364,13 +374,7 @@ def add_error(text, db: Session):
     except Exception as  e :
         #alternative solution bech ken db tahet najem nil9a l mochkla
         raise HTTPException(status_code = 500,detail ="Something went wrong")
-error_keys = {
-    "employee_roles_employee_id_fkey": "No Employee with this id",
-    "employee_roles_pkey": "No Employee Role with this id",
-    "ck_employees_cnss_number": "It should be {8 digits}-{2 digits} and it's Mandatory for Cdi and Cdd",
-    "employees_email_key": "Email already used",
-    "employees_pkey": "No employee with this id",
-}
+
 def get_error_message(error_message):
     for error_key in error_keys:
         if error_key in error_message:
