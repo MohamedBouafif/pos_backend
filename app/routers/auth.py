@@ -19,10 +19,10 @@ app = APIRouter(
 )
 
 
-@app.post("/token",response_model = schemas.Token)
+@app.post("/auth/login",response_model = schemas.Token)
 async def login_for_access_token(db : DbDep,form_data: OAuthDep):
     try:
-        employee = authenticate_employee(db, form_data.email, form_data.password)
+        employee = authenticate_employee(db, form_data.username, form_data.password)
         if not employee:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -39,9 +39,9 @@ async def login_for_access_token(db : DbDep,form_data: OAuthDep):
         add_error(text,db)
         raise HTTPException(status_code = 500,detail =get_error_message(str(e)))
     
-    return Token(access_token=access_token, token_type="bearer")
+    return Token(status_code=status.HTTP_200_OK ,access_token=access_token, token_type="bearer")
 
-@app.patch("/confirm_account",response_model = schemas.BaseOut)
+@app.patch("/auth/confirm_account",response_model = schemas.BaseOut)
 def confirm_account(confirmAccountInput :schemas.ConfirmAccount, db : DbDep):
     try:
         confirmation_code = auth.get_confirmation_code(db,confirmAccountInput.confirm_code)
@@ -72,7 +72,7 @@ def confirm_account(confirmAccountInput :schemas.ConfirmAccount, db : DbDep):
         )
     
 
-@app.post("/forgot_password", response_model = schemas.BaseOut)
+@app.post("/auth/forgot_password", response_model = schemas.BaseOut)
 async def forgot_password(entry : schemas.ForgetPassword, db :DbDep):
     employee = get_employee_by_email(db , entry.email)
     if not employee:
@@ -100,7 +100,7 @@ async def forgot_password(entry : schemas.ForgetPassword, db :DbDep):
         )
         
 
-@app.patch("/reset_password",response_model = schemas.BaseOut)
+@app.patch("/auth/reset_password",response_model = schemas.BaseOut)
 def reset_password(resetPasswordInput : schemas.ResetPassword, db : DbDep):
     try:
         reset_code = auth.get_reset_code(db,resetPasswordInput.reset_code)

@@ -12,7 +12,7 @@ class OurBaseModel(BaseModel):
         orm_mode = True
 
 class BaseOut(OurBaseModel):
-    detail : str
+    detail : str |None = None
     status_code: int
     
 class PagedResponse(BaseOut):
@@ -93,7 +93,7 @@ class ImportResponse(BaseOut):
     wrongCells:Optional[list[MatchyWrongCell]] = []
 
 
-class Token(BaseModel):
+class Token(BaseOut):
     access_token: str
     token_type: str
 

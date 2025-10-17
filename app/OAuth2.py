@@ -58,6 +58,6 @@ def authenticate_employee(db, email: str, password: str):
     employee = get_employee_by_email(db, email)
     if not employee:
         return False
-    if not verify_password(password, employee.hashed_password):
+    if not verify_password(password, employee.password):
         return False
     return employee

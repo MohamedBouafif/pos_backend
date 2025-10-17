@@ -24,7 +24,7 @@ app = APIRouter(
 error_keys = {
     "employee_roles_employee_id_fkey": "No Employee with this id",
     "employee_roles_pkey": "No Employee Role with this id",
-    "ck_employees_cnss_number": "It should be {8 digits}-{2 digits} and it's Mandatory for Cdi and Cdd",
+    "ck_employees_cnss_number": "Cnss number should be {8 digits}-{2 digits} and it's Mandatory for Cdi and Cdd",
     "employees_email_key": "Email already used",
     "employees_pkey": "No employee with this id",
 }
@@ -39,7 +39,7 @@ async def add(employee_create: schemas.EmployeeCreate, db : DbDep,current_user :
         db.rollback()
         text = str(e)
         add_error(text,db)
-        raise HTTPException(status_code = 500,detail =get_error_message(str(e)))
+        raise HTTPException(status_code = 500,detail =get_error_message(str(e),error_keys))
     
     return schemas.EmployeeResponse(**db_employee.__dict__)
 
@@ -60,7 +60,7 @@ async def edit(id: int, entry: schemas.EmployeeEdit, db: DbDep):
 
 
 
-@app.get("/all", response_model=schemas.EmployeesResponse)
+@app.get("/", response_model=schemas.EmployeesResponse)
 def get(db: DbDep, pagination_param: PaginationDep, name_substr: str = None):
     try:
         employees, total_records, total_pages = employee.get_employees(db, pagination_param, name_substr)
