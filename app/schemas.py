@@ -1,8 +1,10 @@
 from datetime import datetime, date
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from app.enums import ContractType, Gender
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from app.enums import RoleType
+from app.enums.accountStatus import AccountStatus
+from app.enums.emailTemplate import EmailTemplate
 from app.enums.matchyComparer import Comparer
 from app.enums.matchyConditionProperty import ConditionProperty
 from app.enums.matchyFieldType import FieldType
@@ -41,6 +43,9 @@ class EmployeeCreate(EmployeeBase):
 class EmployeeResponse(EmployeeBase):
     id : int
     created_on : datetime
+    detail : str |None = None
+    status_code: int | None = None
+    account_status : AccountStatus
 
 class EmployeesResponse(PagedResponse):
     list : List[EmployeeResponse]
@@ -82,7 +87,7 @@ class MatchyCell(OurBaseModel):
 
 class MatchyUploadEntry(OurBaseModel):
     lines: List[Dict[str, MatchyCell]] # [ {cnss_number: {40, 1, 1}, {roles: {Admin, vendor, 1, 2}}, {emp 2}, {emp 3}] # enou emp lkol en tant que dict 3andhom nafs l keys
-    forceUpload: Optional[bool] = False
+    force_upload: Optional[bool] = False
 class MatchyWrongCell(OurBaseModel):
     message: str
     rowIndex: int
@@ -91,7 +96,11 @@ class ImportResponse(BaseOut):
     errors:Optional[str] = None
     warnings: Optional[str] = None
     wrongCells:Optional[list[MatchyWrongCell]] = []
-
+class MailData(OurBaseModel):
+    emails: List[EmailStr]
+    body: Dict[str, Any]
+    template: EmailTemplate
+    subject: str
 
 class Token(BaseOut):
     access_token: str

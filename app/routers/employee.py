@@ -14,6 +14,7 @@ import re
 
 from app.enums.emailTemplate import EmailTemplate
 from app.external_services import emailService
+from app.service import upload_employee
 
 app = APIRouter(
     prefix = "/employee",
@@ -30,18 +31,36 @@ error_keys = {
 }
 
 @app.post("/",  response_model=schemas.EmployeeResponse)
-async def add(employee_create: schemas.EmployeeCreate, db : DbDep,current_user : currentEmployee):
+async def add(employee_create: schemas.EmployeeCreate, db : DbDep):
     if employee_create.password != employee_create.confirm_password:
             raise HTTPException(status_code=400, detail="Password must match!")
     try:
         db_employee = await employee.add_employee(db = db ,employee = employee_create)
+        
     except Exception as e:
         db.rollback()
         text = str(e)
         add_error(text,db)
         raise HTTPException(status_code = 500,detail =get_error_message(str(e),error_keys))
     
-    return schemas.EmployeeResponse(**db_employee.__dict__)
+    return schemas.EmployeeResponse(
+        id=db_employee.id,
+        created_on=db_employee.created_on,
+        first_name=db_employee.first_name,
+        last_name=db_employee.last_name,
+        email=db_employee.email,
+        roles=[role.role for role in db_employee.roles],  # Assuming a relationship
+        number=db_employee.number,
+        birth_date=db_employee.birth_date,
+        address=db_employee.address,
+        cnss_number=db_employee.cnss_number,
+        contract_type=db_employee.contract_type,
+        gender=db_employee.gender,
+        account_status=db_employee.account_status,
+        phone_number=db_employee.phone_number,
+        status_code=200,
+        detail="Employee created successufully",
+    )
 
 @app.put("/{id}", response_model=schemas.BaseOut)
 async def edit(id: int, entry: schemas.EmployeeEdit, db: DbDep):
@@ -60,7 +79,7 @@ async def edit(id: int, entry: schemas.EmployeeEdit, db: DbDep):
 
 
 
-@app.get("/", response_model=schemas.EmployeesResponse)
+@app.get("/all", response_model=schemas.EmployeesResponse)
 def get(db: DbDep, pagination_param: PaginationDep, name_substr: str = None):
     try:
         employees, total_records, total_pages = employee.get_employees(db, pagination_param, name_substr)
@@ -86,7 +105,8 @@ def get(db: DbDep, pagination_param: PaginationDep, name_substr: str = None):
             contract_type=employee.contract_type,
             gender=employee.gender,
             phone_number=employee.phone_number,
-            created_on=employee.created_on
+            created_on=employee.created_on,
+            account_status=employee.account_status
         ) for employee in employees],
         page_number=pagination_param.page_number, 
         page_size=pagination_param.page_size,
@@ -146,9 +166,8 @@ options = [
         schemas.MatchyCondition(property=enums.ConditionProperty.value, comparer=enums.Comparer._in, value=enums.Gender.getPossibleValues())
     ]),
     schemas.MatchyOption(display_value=mandatory_fields["employee_roles"], value="employee_roles", mandatory=True, type=enums.FieldType.string),
-    schemas.MatchyOption(display_value=optional_fields["phone_number"], value="phone_number", mandatory=False, type=enums.FieldType.string, conditions=[
-        schemas.MatchyCondition(property=enums.ConditionProperty.regex, comparer=enums.Comparer.e, value=phone_number_regex),
-    ]),
+    schemas.MatchyOption(display_value=optional_fields["phone_number"], value="phone_number", mandatory=False, type=enums.FieldType.string)
+    
 ]
 
 
@@ -180,27 +199,29 @@ def is_valid_cnss_number(field):
 def is_valid_phone_number(field):
     return field if is_regex_matched(phone_number_regex, field) else None
 def are_roles_valid(field):
-    # Admin,  venDor,  
+    # Handle comma-separated roles (e.g., "Admin, venDor") or single role (e.g., "Admin")
     res = []
-    for role_name in field.split(''):
+    # Strip whitespace and split on comma
+    roles = [role.strip() for role in field.split(',')] if field else []
+    
+    for role_name in roles:
+        if not role_name:  # Skip empty roles (e.g., from trailing comma)
+            continue
         value = enums.RoleType.is_valid_enum_value(role_name)
         if not value:
-            return None
+            return None  # Invalid role found
         else:
-            res.append(value)
-    return res # [enums.RoleType.Admin, enums.RoleType.Vendor]
+            res.append(value)  # Append the validated enum value
+    return res if res else None  # Return list of valid roles or None if no valid roles
 
 fields_check = {
-    #field to validate : {function to validate , error message if not validated}
-    "email" : {lambda field : is_valid_email(field), "Wrong Email Format !"},
-    "gender" : {lambda field : enums.Gender.is_valid_enum_value(field), f"Possible values are : {enums.Gender.getPossibleValues()}"},
-    "contract_type" : {lambda field : enums.ContractType.is_valid_enum_value(field), f"Possible values are : {enums.ContractType.getPossibleValues()}"},
-    "number" : {lambda field : is_positive_int(field) , "It should be an integer >= 0"},
-    "birth_date": {lambda field : is_valid_date(field) , "Dates fromat should be dd/mm/YYYY"},
-    "cnss_number" : {lambda field : is_valid_cnss_number(field), "It should be {8 digits}-{2 digits} and it's Mandatory for Cdi and Cdd"},
-    "phone_number" : {lambda field : is_valid_phone_number(field) , "Phone number is not valid for Tunisian, it should be of 8 digits"},
-    "employee_roles" : {lambda field : are_roles_valid(field) , f"Possible values are :{enums.RoleType.getPossibleValues()}"}
-
+    "email": (lambda field: is_valid_email(field), "Wrong Email Format !"),
+    "gender": (lambda field: enums.Gender.is_valid_enum_value(field), f"Possible values are : {enums.Gender.getPossibleValues()}"),
+    "contract_type": (lambda field: enums.ContractType.is_valid_enum_value(field), f"Possible values are : {enums.ContractType.getPossibleValues()}"),
+    "number": (lambda field: is_positive_int(field), "It should be an integer >= 0"),
+    "birth_date": (lambda field: is_valid_date(field), "Dates format should be dd/mm/YYYY"),
+    "cnss_number": (lambda field: is_valid_cnss_number(field), "It should be {8 digits}-{2 digits} and it's Mandatory for Cdi and Cdd"),
+    "employee_roles": (lambda field: are_roles_valid(field), f"Possible values are :{enums.RoleType.getPossibleValues()}")
 }
 def is_field_mandatory(employee,field):
     return field in mandatory_fields or (field in mandatory_with_condition and mandatory_with_condition[field][1](employee))
@@ -282,7 +303,6 @@ def validate_employees_data_and_upload(employees:list , backgroundTasks : Backgr
             roles_per_email[emp.get("email")] = emp.pop('employee_roles') #email unique
             emp["password"] =  uuid.uuid1()
             employees_to_add.append(models.Employee(**emp))
-            roles.append(emp.get('roles'), [])
 
        
         for field in unique_fields:
@@ -404,17 +424,17 @@ def get_error_message(error_message):
 #il entry feha ligne milfou9 belkol fih esemi les champs ili bch ysirilhom upload
 @app.post("/csv")
 async def upload(entry:schemas.MatchyUploadEntry, backgroundTasks : BackgroundTasks,db:DbDep):
-    employees = entry.lines
-    if not employees: #front lezmou yjeri ili fama au moins ligne
-        raise HTTPException(status_code=400, detail = "Nothig to do , Empty file !")
-    header_fields = employees[0].keys()#esemi il champs ili bch naamlilhom upload
-    missing_mendatory_fields = set(mandatory_fields.keys()) - header_fields
-    if missing_mendatory_fields:
-        raise HTTPException(
-            status_code = 400, 
-            detail= f"missing mendatory fields: {(', ').join([mandatory_fields[field] for field in missing_mendatory_fields])}"
-        )
+    # employees = entry.lines
+    # if not employees: #front lezmou yjeri ili fama au moins ligne
+    #     raise HTTPException(status_code=400, detail = "Nothig to do , Empty file !")
+    # header_fields = employees[0].keys()#esemi il champs ili bch naamlilhom upload
+    # missing_mendatory_fields = set(mandatory_fields.keys()) - header_fields
+    # if missing_mendatory_fields:
+    #     raise HTTPException(
+    #         status_code = 400, 
+    #         detail= f"missing mendatory fields: {(', ').join([mandatory_fields[field] for field in missing_mendatory_fields])}"
+    #     )
    
-    return  validate_employees_data_and_upload(employees, backgroundTasks ,entry.forceUpload, db)
+    # return  validate_employees_data_and_upload(employees, backgroundTasks ,entry.forceUpload, db)
+    return upload_employee.upload(entry, backgroundTasks, db)
     
-     
